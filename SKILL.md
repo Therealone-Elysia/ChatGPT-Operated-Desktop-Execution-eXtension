@@ -1,8 +1,7 @@
-
 ---
 name: hiro-mac-workflow
 description: 操作Mac上的Word、桌面文件和Safari，读改文本、浏览下载及发布Skills时使用.
-version: "2.1.3"
+version: "2.1.6"
 author: "ChatGPT-assisted workflow"
 license: "UNLICENSED"
 metadata:
@@ -274,9 +273,17 @@ HERMES_GPT_OPERATOR_ALLOWED_PROFILES=default
 
 ### 固定用户选择
 
-默认复用用户已登录的 Safari。不要切 Chrome、建立独立 Chromium profile，或复制 Cookie/密码来实现同一任务。用户明确另选浏览器时再改变。需要浏览 GitHub、发布 Skill 或做网页核验时，默认在 Safari **新建独立窗口**执行，保留承载当前 ChatGPT 对话的窗口不动；后续连续操作固定复用这个任务窗口，不把当前聊天窗口拿来导航、刷新或替换地址。
+默认复用用户已登录的 Safari。不要切 Chrome、建立独立 Chromium profile，或复制 Cookie/密码来实现同一任务。用户明确另选浏览器时再改变。**当用户已经在 Safari 留有目标 GitHub 页面时，必须优先复用该现有窗口：只按现有窗口标题/window_id 切换过去继续；禁止 Cmd+L、禁止输入 URL、禁止 browser_navigate、禁止新建标签/窗口、禁止刷新或后退来寻找目标；绝不能对承载当前 ChatGPT 对话的 Safari 窗口做地址替换。找不到现成目标 GitHub 窗口就停止并报告，不自行导航。** 只有用户尚未打开目标 GitHub 页面、且明确需要新开页面时，才可在独立任务窗口执行。GitHub 连续操作固定复用同一任务窗口，不把当前聊天窗口拿来导航、刷新或替换地址。
 
 按实时 schema 通过原生桌面定位 `com.apple.Safari`，已有实例使用 new_instance=false。Safari 走桌面控制，不强行使用 Chromium 的 ref/session。只观察相关窗口和标签页。用户说桥接已修复后核实当前接口，不沿用旧“Safari未接入”结论。
+
+### Safari 受限窗口发现与身份校验（bridge 1.1.0+）
+
+若实时 tools/list 提供 `hiro_native_app_windows` 与 `hiro_native_verify_window_identity`，优先使用它们，不再依赖无 PID 的全桌面 `desktop_list_windows`。`hiro_native_app_windows(app=com.apple.Safari, confirm=true)` 只登记/复用已批准的 Safari，并在该应用 PID 范围内列出顶层窗口；它应在 `desktop.display=false` 下正常工作。无 PID 的全桌面 `desktop_list_windows` 被 `bounded_resource_outside_manifest` 拒绝是预期安全边界，不为通过验收而开启 `desktop.display=true`。
+
+对 GitHub、ChatGPT 等同一 Safari 窗口内的多标签任务，窗口标题不能单独作为目标身份。切换到目标标签后，必须调用 `hiro_native_verify_window_identity(pid, window_id, expected_contains=...)` 或等价的双模态检查，要求 WindowServer `window_title` 与 `AXWindow`/`AXWebArea` 根节点同时匹配；必要时再用同一 `window_id` 的新鲜截图交叉验证。只有 `title_match=true`、`ax_match=true`、`verified=true` 才可继续写入、提交、发送或覆盖。若出现“标题已是 GitHub、AX 根仍是 ChatGPT”等错配，停止动作并重新观察，不向当前页面输入任何内容。
+
+用户已打开目标标签但它与 ChatGPT 同窗时，优先使用新鲜截图/明确标签控件精确选择现有标签；不使用 `Cmd+L` 或 URL 导航，也不连续用 `Ctrl+Tab` 猜位置。若目标页面长期用于自动化，优先让 GitHub 保持独立 Safari 窗口，并持续复用其稳定的 `pid + window_id`。
 
 ### 浏览与填写
 
@@ -308,7 +315,7 @@ sheet 可能挂在父窗口，按实际归属处理。控件字段以真实 labe
 
 ## 7. Safari 向 GitHub 发布 Skill
 
-用户明确要求发到 GitHub 时执行，不只提供提示词。默认使用现有 Safari 的 GitHub 网页，不悄悄换 Git CLI/API。
+用户明确要求发到 GitHub 时执行，不只提供提示词。默认使用现有 Safari 的 GitHub 网页，不悄悄换 Git CLI/API。**若目标 GitHub 页面已经打开，只允许切换到该现有窗口继续；不得为了“定位页面”去 Cmd+L、输入 URL、调用 browser_navigate、新建标签/窗口、刷新或后退，更不得覆盖当前 ChatGPT 对话页。找不到现成目标窗口就停止，不自行导航。**
 
 确认账号、owner/repo、目录、分支与可见性；优先明确指定或当前明确选择的仓库。不能因任意仓库可写就选它。多个同样合理目标且无法消歧时只问仓库，不重复问已授权的发布行为。
 
@@ -317,6 +324,14 @@ sheet 可能挂在父窗口，按实际归属处理。控件字段以真实 labe
 遵循既有 skills 布局，常见为 skills/hiro-mac-workflow/SKILL.md 或项目的 .agents/skills/hiro-mac-workflow/SKILL.md。本核心文件可单独安装；存在相对引用时须同时上传依赖。只上传 ZIP 不等于已部署可发现的 Skill。
 
 同名文件先读比较，保留无关内容；优先独立分支并尊重分支保护。不强推、不删分支、不擅自合并。网页编辑/上传后核对文件路径、正文，再点击 Commit 一次。
+
+### GitHub 长文本编辑保护
+
+GitHub 网页编辑器中的长 Skill 不能默认按普通短文本一次性输入。优先使用当前原生工具真实支持的 `set_value`、粘贴或等价的整体赋值接口；如果只能使用 `type_text`，必须遵守工具返回的字符预算并分块写入，单块不得超过返回的 `max_chunk_chars`。出现 `type_text_synthesis_budget_exceeded` 且 `delivered_chars=0` 时，说明该块没有写入，可以缩小后重试；若 `delivered_chars>0` 或结果不确定，必须先重新观察编辑器并从实际尾部继续，禁止直接重放整段。
+
+覆盖现有 `SKILL.md` 前先保留已提交版本作为基线，并记录目标版本、首部 frontmatter 与末尾自检段。长文写入完成后至少核对：文件路径正确；`name`/`version` 正确；首段和末段存在；关键新增小节存在；编辑器内容不是只剩末尾残片；字符量/行数与预期同一量级。任一项不满足都不能提交。
+
+如果编辑器已经因为中断、拒绝或误操作只剩部分文本，先恢复完整目标文件，不能把“当前编辑框有内容”当作完成。提交前重新观察一次文本区；提交后再从仓库 blob/commit 页面读取真实文件核验。对同一长文件的失败写入，不通过反复全文重打来碰运气。
 
 超时或回执报错后，先检查仓库文件和提交历史，不重复提交。核验真实文件内容及 commit 页面/编号后才报告上传成功。文件已选中、编辑器填好、任务排队均不是提交完成。
 
@@ -353,3 +368,4 @@ open 的 -10661/-10827 不单独证明应用损坏；ps EPERM 不证明文件没
 检查：读 Word 未误开 GUI；改单句未全篇替换；未覆盖未保存文档；Safari 未换浏览器；下载已完成且不是错误页；正文无虚构和截断；token/窗口/坐标新鲜；用户确认后停止；GitHub 内容和提交都真实核验。
 
 这些是行为验收规则，不是全部 Mac 实机测试的完成声明。报告实际结果、必要路径及尚未解决事项，简单任务简短收尾；不输出角色扮演称呼，不承诺无工具支持的后台工作。
+
