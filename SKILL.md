@@ -1,12 +1,12 @@
 ---
 name: hiro-mac-workflow
 description: 操作Mac上的Word、桌面文件和Safari，读改文本、浏览下载及发布Skills时使用.
-version: "2.1.6"
+version: "2.2.0"
 author: "ChatGPT-assisted workflow"
 license: "UNLICENSED"
 metadata:
   hermes:
-    tags: [macos, office, word, safari, files, github]
+    tags: [macos, windows, office, word, safari, browser, files, github, cross-platform]
     related_skills: []
 ---
 
@@ -43,6 +43,55 @@ metadata:
 复用已验收的本机解释器、工作目录、MCP 地址和认证方式；不要猜 SDK 参数，不另行搜集或输出凭据。同一 UI 任务只保留一个活动 job，连续操作复用一个 session_id；只读新增日志，不重复打印完整执行历史。
 
 `hiro_native_*` 是部署相关扩展名，不是所有 Hermes 版本固定提供的官方接口。只有本轮发现后才调用对应 status/session_open/desktop_open/get_window_state/click/type_text/hotkey 等工具。按真实 schema 传 dry_run=false、confirm=true 等必要参数；测试白名单接口不是通用终端。
+
+### hiro_native_* 调用链（最容易踩空的一步）
+
+**除 `hiro_native_status` 外，其余 `hiro_native_*` 工具全部要求 `session_id`。**
+不先开 session 直接调 `desktop_open` / `app_windows` / `verify_window_identity`，会立刻返回参数校验错误：
+
+```
+1 validation error for hiro_native_app_windowsArguments
+session_id
+  Field required [type=missing]
+```
+
+这不是权限或驱动问题，纯粹是漏了一步。固定顺序：
+
+```text
+1. hiro_native_status()                          # 只读自检；无 session_id
+     → bridge_version / manifest_sha256 / apply_mode / active_sessions
+
+2. hiro_native_session_open(workspace="<名字>")
+     → session_id（全新） / reused / browser_profile
+
+3. 之后每一个 hiro_native_* 调用都要带上第 2 步的 session_id：
+   hiro_native_desktop_open(session_id, app=<白名单内 bundle id>,
+                            new_instance=false, confirm=true)
+     → pid + 该应用的窗口列表（含 window_id）
+
+   hiro_native_app_windows(session_id, app=<同上>, confirm=true)
+     → 只返回该应用的顶层窗口，不开启全桌面观察
+
+   hiro_native_verify_window_identity(session_id, pid, window_id,
+                                      expected_contains="<页面标记>")
+     → title_match / ax_match / verified
+
+   ...get_window_state / click / type_text / set_value / 各 browser_* 均同理
+
+4. hiro_native_session_close(session_id)         # 收尾，释放该 workspace
+```
+
+要点：
+
+- `app` 参数是受限枚举，取值来自 `capabilities.yaml` 的 `resources.apps`；不在白名单里会被拒。
+  先看 `hiro_native_status` 或白名单文件，不要猜 bundle id。
+- `session_id` 是**会话级**凭据：服务重载、workspace 关闭或 idle timeout 之后一律作废，
+  必须重新 `session_open`，不能沿用旧 id。
+- `verify_window_identity` 的 `expected_contains` 是**失败即拒绝**的闸门：
+  传一个不匹配的标记进去，它返回 `verified=false` 而不是放行。写入/提交/覆盖前必须看到
+  `verified=true`，且要接受"标题对得上但 AX 根对不上"时也要停。
+- `verify_window_identity` 会把整棵 AX 树塞进返回内容（大页面可达数百 KB）。
+  只需判断是否匹配时，不要把它整段读进上下文，只取 `title_match` / `ax_match` / `verified`。
 
 ### 会话隔离与断点续作
 
@@ -108,6 +157,10 @@ HERMES_GPT_OPERATOR_ALLOWED_PROFILES=default
 `ALLOWED_PATHS` 必须按目标机器实际目录设置。日常办公通常只开放用户明确需要的 Documents/Desktop/Downloads 等目录或项目根目录；不把 `/`、整个用户目录、系统目录和所有外接盘一次性放行。
 
 ### D. macOS 系统权限与应用清单
+
+> **本节是 macOS 专有内容。** Windows / Linux 没有 TCC 授权模型，移植时跳过本节，
+> 改为确认 `cua-driver doctor` 全绿；自启动也要换成目标平台机制
+> （Windows 用 `cua-driver autostart enable`）。详见 `docs/cross-platform.md`。
 
 桌面控制和文件权限是两层能力。文件可读写不代表能点 Safari/Word，反过来也一样。
 
@@ -366,6 +419,8 @@ open 的 -10661/-10827 不单独证明应用损坏；ps EPERM 不证明文件没
 ## 10. 自检与交付
 
 检查：读 Word 未误开 GUI；改单句未全篇替换；未覆盖未保存文档；Safari 未换浏览器；下载已完成且不是错误页；正文无虚构和截断；token/窗口/坐标新鲜；用户确认后停止；GitHub 内容和提交都真实核验。
+
+跨平台交付时额外检查：目标平台驱动的真实 schema 已核对（未照抄 macOS 的 `bundle_id` / `com.apple.*` / TCC 章节）；本机绝对路径未硬编码进源码；第 G 节各层验收在该平台重跑过并分别标状态。详见 `docs/cross-platform.md`。
 
 这些是行为验收规则，不是全部 Mac 实机测试的完成声明。报告实际结果、必要路径及尚未解决事项，简单任务简短收尾；不输出角色扮演称呼，不承诺无工具支持的后台工作。
 

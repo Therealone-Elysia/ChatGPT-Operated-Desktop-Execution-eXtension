@@ -26,4 +26,19 @@ v2.1.6 还补充了两类 native-ui 恢复流程：一是 capability manifest �
 
 工作流文件：[`skills/hiro-mac-workflow/SKILL.md`](skills/hiro-mac-workflow/SKILL.md)。仓库根目录的 `SKILL.md` 保留为同内容入口，便于直接查看。
 
+跨平台移植（Windows / Linux）说明：[`docs/cross-platform.md`](docs/cross-platform.md)。
+
+## 平台说明
+
+原始目标平台是 **macOS**。底层驱动 [cua-driver](https://github.com/trycua/cua) 本身跨平台（macOS / Windows / Linux），但本仓库的工作流文件包含大量 macOS 专有内容：
+TCC 权限章节、`com.apple.*` 应用标识、Safari 桌面路线、launchd 自启动。
+
+移植到其他平台时：
+
+- **可移植**：能力分层思路、会话与身份校验流程、故障定位表、分层验收清单、Word/文件读写。
+- **不可移植**：TCC 授权、`bundle_id` 标识、Safari 分支、`LaunchAgent` 自启动、本机绝对路径。
+- **替换路线**：桌面动作走 cua-driver 统一接口；浏览器任务改用 `browser_*` 系列而非 Safari 桌面控制；自启动改用目标平台机制（Windows: `cua-driver autostart`）。
+
+具体步骤与自检清单见 [`docs/cross-platform.md`](docs/cross-platform.md)。该文档区分「本机已验证」与「待目标机验证」两类结论 —— 移植时不要把前者当后者用。
+
 依赖用户自己已有的 Hiro/Hermes 环境及相应应用授权。安装 Skill 不会自动授予应用控制、文件访问或其他权限。
