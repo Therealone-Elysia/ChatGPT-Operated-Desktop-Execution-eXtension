@@ -1,7 +1,7 @@
 ---
 name: hiro-mac-workflow
 description: 操作Mac上的Word、桌面文件和Safari，读改文本、浏览下载及发布Skills时使用.
-version: "2.2.0"
+version: "2.2.1"
 author: "ChatGPT-assisted workflow"
 license: "UNLICENSED"
 metadata:
@@ -17,6 +17,12 @@ metadata:
 # Hiro Mac 日常办公工作流
 
 通过已经配置的 Hiro/Hermes 完成用户当前的 Mac 工作，不把普通任务变成重新安装、提权和全量体检。本文件自包含，是操作方法，不是驱动或授权文件；不代表所有应用均已验收。纯知识问答、润色已给文本不触发 Mac 操作。
+
+### 自建网页插件的身份边界
+
+本 Skill 中的 `Hiro` 是既有本机桥接/插件名称。另建 Web Chat 电脑控制插件时，由使用者另取与它区分的名称，**不得把新插件命名为 `Hiro` 或把 `Hiro` 当作新插件别名**。每次网页聊天想调用新插件，当前请求都必须明确点名自己所取的插件名，并在客户端选中同名连接。只写 `Hiro`、只说“控制电脑”、未点名或选中的连接不一致时，不默认调用任何电脑控制插件，也不回退到 Hiro；先确定用户要用的插件。此规则不妨碍用户明确指定既有 Hiro 来完成它原本获授权的任务。
+
+动作前先只读核对连接所绑定的目标电脑；如果目标设备与用户预期不符，停止该动作。插件名称和提示词只能减少误选，真正的隔离由服务端验证用户、连接和设备的绑定关系，并对每次工具调用授权。
 
 ## 1. 选择最短通道
 
@@ -122,13 +128,15 @@ session_id
 目标链路应明确写出来，防止把不同后端混为一谈：
 
 ```text
-ChatGPT / 客户端
-  → Hiro / MCP 连接
+自建 Web Chat 后端（OpenAI API 工具调用）或 ChatGPT 网页插件（MCP 工具连接）
+  → 已认证、绑定目标设备的 Hiro / MCP 连接
   → Hermes GPT 受认证服务
   → 文件 / Codex runner / native-ui 桥接
   → CuaDriver 或正式浏览器后端
   → macOS / Safari / Finder / Word 等应用
 ```
+
+两种网页入口分别部署：OpenAI API 返回的工具调用须由自建后端执行；ChatGPT 插件须提供可连接的 MCP 服务。模型或 Skill 不会自行获得用户电脑权限，且本仓库未发布这些网页服务与私有桥接实现。目标为 Windows 时，将最后一层改为对应 Windows 应用与交互式桌面会话；在目标机及真实网页入口分别验收。
 
 当前这套 C.O.D.E.X. 工作流的桌面控制基于 **受限应用清单 + 原生驱动会话**；Safari 应复用用户现有 Safari 登录，而不是自动改成独立 Chromium profile。部署到别的环境时要以该环境实际 tools/list、版本和 schema 为准，不能假设 `hiro_native_*`、bundle id、端口或目录与原机器完全一致。
 
@@ -423,4 +431,3 @@ open 的 -10661/-10827 不单独证明应用损坏；ps EPERM 不证明文件没
 跨平台交付时额外检查：目标平台驱动的真实 schema 已核对（未照抄 macOS 的 `bundle_id` / `com.apple.*` / TCC 章节）；本机绝对路径未硬编码进源码；第 G 节各层验收在该平台重跑过并分别标状态。详见 `docs/cross-platform.md`。
 
 这些是行为验收规则，不是全部 Mac 实机测试的完成声明。报告实际结果、必要路径及尚未解决事项，简单任务简短收尾；不输出角色扮演称呼，不承诺无工具支持的后台工作。
-
